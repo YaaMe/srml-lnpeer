@@ -1,8 +1,4 @@
 extern crate futures;
-extern crate hyper;
-extern crate bytes;
-extern crate base64;
-extern crate config;
 extern crate exit_future;
 extern crate ln_primitives;
 extern crate sr_primitives;
@@ -17,38 +13,58 @@ use std::marker::PhantomData;
 
 use futures::future;
 use futures::future::Future;
-use futures::sync::mpsc;
+use futures::future::FutureExt;
+use futures::channel::mpsc;
+// use futures::sync::mpsc;
 use exit_future::Exit;
 
-mod lnbridge;
-use lnbridge::settings::Settings;
+use ln_manager::ln_bridge::settings::Settings;
+use ln_manager::executor::Larva;
 
 use sr_primitives::traits::{self, ProvideRuntimeApi};
 pub use ln_primitives::LnApi;
-use substrate_service::{SpawnTaskHandle, Executor};
+// use substrate_service::{SpawnTaskHandle, Executor};
+
+pub type Executor = tokio::runtime::TaskExecutor;
 
 #[derive(Clone)]
 struct Drone {
-    spawn_task_handle: SpawnTaskHandle,
-    exit: Exit
+    // spawn_task_handle: SpawnTaskHandle,
+    executor: Executor,
+    // exit: Exit
 }
 impl Drone {
-  fn new(spawn_task_handle: SpawnTaskHandle, exit: Exit) -> Self {
-    Self { spawn_task_handle, exit }
-  }
+  // fn new(spawn_task_handle: SpawnTaskHandle, exit: Exit) -> Self {
+  //   Self { spawn_task_handle, exit }
+    // }
+    fn new(executor: Executor) -> Self {
+        Self { executor }
+    }
 }
-impl Larva for Drone<T> {
-  fn spawn_task(
-    &self,
-    task: impl Future<Item = (), Error = ()> + Send + 'static
-  ) -> Result<(), futures::future::ExecuteError<Box<dyn Future<Item = (), Error = ()> + Send>>> {
-    self.spawn_task_handle.execute(Box::new(task.select(exit).then(|_| Ok(()))))
-  }
+// impl Larva for Drone {
+//   fn spawn_task(
+//     &self,
+//     // task: impl Future<Item = (), Error = ()> + Send + 'static
+//       //) -> Result<(), futures::future::ExecuteError<Box<dyn Future<Item = (), Error = ()> + Send>>> {
+//   ) -> Result<(), futures::task::SpawnError> {
+//       self.executor.spawn(task.map(|_| ()));
+//       Ok(())
+//     // self.spawn_task_handle.execute(Box::new(task.select(exit).then(|_| Ok(()))))
+//   }
+// }
+impl Larva for Drone {
+    fn spawn_task(
+        &self,
+        task: impl Future<Output = Result<(), ()>> + Send + 'static,
+    ) -> Result<(), futures::task::SpawnError> {
+        self.executor.spawn(task.map(|_| ()));
+        Ok(())
+    }
 }
 
 pub struct LnBridge<C, Block> {
   client: Arc<C>,
-  ln_manager: Arc<LnManager>,
+  ln_manager: Arc<LnManager<Drone>>,
   _block: PhantomData<Block>,
 }
 
@@ -59,13 +75,19 @@ impl<C, Block> LnBridge<C, Block> where
 {
   pub fn new(
     client: Arc<C>,
-    spawn_task_handle: impl Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Sync + Send + Clone + 'static,
-    exit: Exit
+    // spawn_task_handle: impl Executor<Box<dyn Future<Item = (), Error = ()> + Send>> + Sync + Send + Clone + 'static,
+    // exit: Exit
   ) -> Self {
-    let settings = Settings::new().unwrap();
+      let settings = Settings::new(&String::from("./Settings.toml")).unwrap();
+      let runtime = tokio::runtime::Runtime::new().unwrap();
+      let executor = runtime.executor();
+      let drone = Drone::new(executor);
     // let client = service.client();
-    let drone = Drone::new(spawn_task_handle, exit);
-    let ln_manager = Arc::new(LnManager::new(settings, drone));
+    // let drone = Drone::new(spawn_task_handle, exit);
+      let runtime_api = client.runtime_api();
+      let ln_manager = runtime.block_on(LnManager::new(settings, drone)).unwrap();
+      // let ln_manager = Arc::new(LnManager::new(settings, drone));
+      let ln_manager = Arc::new(ln_manager);
     Self {
       client,
       ln_manager,
