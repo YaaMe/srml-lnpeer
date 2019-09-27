@@ -6,7 +6,7 @@ version = "2.0.0"
 ln-primitives = { path = "./primitives" }
 sr-primitives = { path = "../../core/sr-primitives" }
 substrate-service = { path = "../../core/service" }
-ln-manager = { path = "./ln-manager" }
+ln-manager = { git = "https://github.com/YaaMe/rust-lightning-bitcoinrpc.git", branch = "knarfytrebil" }
 exit-future = "0.1"
 
 [features]
