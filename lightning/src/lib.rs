@@ -4,7 +4,7 @@ use rstd::prelude::*;
 use codec::{self as codec, Encode, Decode, Error};
 use support::{decl_module, decl_storage, decl_event, print};
 use system::{ensure_none, ensure_signed, offchain::SubmitUnsignedTransaction};
-use sr_primitives::{
+use sp_runtime::{
   generic::DigestItem,
   transaction_validity::{
     TransactionValidity, TransactionLongevity, ValidTransaction, InvalidTransaction,
@@ -14,7 +14,7 @@ use ln_primitives::{
   LN_ENGINE_ID, ConsensusLog,
   Account, Tx
 };
-use primitives::offchain::StorageKind;
+use sp_core::offchain::StorageKind;
 
 pub trait Trait: system::Trait {
   type Call: From<Call<Self>>;
@@ -55,7 +55,7 @@ decl_module! {
     }
 
     fn offchain_worker(now: T::BlockNumber) {
-      let local_pub_key = runtime_io::local_storage_get(StorageKind::PERSISTENT, b"ltn_keys").unwrap();
+      let local_pub_key = sp_io::offchain::local_storage_get(StorageKind::PERSISTENT, b"ltn_keys").unwrap();
       if local_pub_key != PubKey::get() {
         let call = Call::sync_pub_key(local_pub_key);
         T::SubmitTransaction::submit_unsigned(call);

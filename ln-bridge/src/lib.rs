@@ -8,7 +8,6 @@ use std::sync::{Arc, Mutex};
 use std::marker::PhantomData;
 use std::collections::HashMap;
 
-use futures::future;
 use futures::future::Future;
 use futures::future::FutureExt;
 use futures::channel::mpsc;
@@ -16,8 +15,7 @@ use futures::channel::mpsc;
 use exit_future::Exit;
 use futures01::future::Future as Future01;
 use futures01::Stream;
-use futures::{StreamExt, TryStreamExt};
-// use futures::stream::Stream;
+use futures_util::{StreamExt, TryStreamExt};
 
 use ln_manager::ln_bridge::settings::Settings;
 use ln_manager::executor::Larva;
@@ -36,22 +34,23 @@ use ln_manager::lightning::ln::{
   channelmanager::{PaymentHash, PaymentPreimage, ChannelManager}
 };
 use ln_manager::lightning::util::events::Event;
-use ln_manager::lightning::chain::keysinterface::KeysInterface;
+use ln_manager::lightning::chain::keysinterface::{KeysInterface, InMemoryChannelKeys};
 
-use client::runtime_api::HeaderT;
-use client::{runtime_api::BlockT, BlockchainEvents, ImportNotifications};
 use client::blockchain::HeaderBackend;
-use client::runtime_api::BlockId::Number;
 use client::BlockImportNotification;
-use client::backend::OffchainStorage;
-use sr_primitives::traits::{self, ProvideRuntimeApi, NumberFor};
-use sr_primitives::generic::{BlockId, OpaqueDigestItemId};
+use sp_core::offchain::OffchainStorage;
+use sp_runtime::traits::{
+    self, ProvideRuntimeApi, NumberFor,
+    Header as HeaderT, Block as BlockT,
+};
+use client_api::{BlockchainEvents, ImportNotifications};
+use sp_runtime::generic::{BlockId, OpaqueDigestItemId, BlockId::Number};
 
 // use sr_primitives::generic::BlockId;
 pub use ln_primitives::{LnApi, ConsensusLog, LN_ENGINE_ID, LnNode};
-use primitives::offchain;
+// use primitives::offchain;
 
-pub type Executor = tokio::runtime::TaskExecutor;
+pub type Executor = tokio::runtime::Handle;
 pub type Task = Box<dyn Future01<Item = (), Error = ()> + Send>;
 // use inherents::{InherentDataProviders, InherentIdentifier};
 // pub const INHERENT_LN_ID: InherentIdentifier = *b"ltn_data";
@@ -102,10 +101,10 @@ pub struct LnBridge {
 
 impl LnBridge {
   pub fn new(exit: Exit) -> Self {
-    let settings = Settings::new(&String::from("./Settings.toml")).unwrap();
-    let runtime = tokio::runtime::Runtime::new().unwrap();
-    let executor = runtime.executor();
-    let drone = Drone::new(executor);
+    let settings = Settings::new(&String::from("./Settings_1.toml")).unwrap();
+    let mut runtime = tokio::runtime::Runtime::new().unwrap();
+    let executor = runtime.handle();
+    let drone = Drone::new(executor.clone());
     let ln_manager = runtime.block_on(LnManager::new(settings, drone)).unwrap();
     let ln_manager = Arc::new(ln_manager);
     let key = ln_manager.node_key_str();
@@ -124,8 +123,8 @@ impl LnBridge {
   pub fn ln_manager(&self) -> Arc<LnManager<Drone>> {
     self.ln_manager.clone()
   }
-  pub fn executor(&self) -> tokio::runtime::TaskExecutor {
-    self.runtime.executor()
+  pub fn executor(&self) -> tokio::runtime::Handle {
+    self.runtime.handle().clone()
   }
 
   pub fn bind_client<B, C>(&self, client: Arc<C>) -> Task where
@@ -164,8 +163,9 @@ impl LnBridge {
           println!("<<<<<<<<<<<<<<<<<<<<<<<<<<<<< catch log event here");
         }
         Ok(())
-      }).select(self.exit.clone()).then(|_| Ok(()));
-    Box::new(ln)
+        }).select(self.exit.clone()).then(|_| Ok(()));
+      Box::new(ln)
+      // Box::new(self.exit.clone())
   }
 
   pub fn bind_runtime<C, Block>(&self, client: Arc<C>) where
@@ -184,7 +184,7 @@ impl Builder<Drone> for LnManager<Drone> {
     rpc_client: Arc<RPCClient>,
     peer_manager: Arc<peer_handler::PeerManager<SocketDescriptor<Drone>>>,
     monitor: Arc<channelmonitor::SimpleManyChannelMonitor<chain::transaction::OutPoint>>,
-    channel_manager: Arc<ChannelManager>,
+    channel_manager: Arc<ChannelManager<'static, InMemoryChannelKeys>>,
     chain_broadcaster: Arc<dyn chain::chaininterface::BroadcasterInterface>,
     payment_preimages: Arc<Mutex<HashMap<PaymentHash, PaymentPreimage>>>,
     larva: Drone,

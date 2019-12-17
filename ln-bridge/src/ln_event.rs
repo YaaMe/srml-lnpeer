@@ -14,6 +14,7 @@ use ln_manager::lightning::ln::{
   peer_handler, channelmonitor,
   channelmanager::{PaymentHash, PaymentPreimage, ChannelManager}
 };
+use ln_manager::lightning::chain::keysinterface::{KeysInterface, InMemoryChannelKeys};
 use ln_manager::lightning::util::events::{Event, EventsProvider};
 use ln_manager::lightning::util::ser::Writeable;
 
@@ -23,7 +24,7 @@ pub fn get_event_notify(
   rpc_client: Arc<RPCClient>,
   peer_manager: Arc<peer_handler::PeerManager<SocketDescriptor<Drone>>>,
   monitor: Arc<channelmonitor::SimpleManyChannelMonitor<chain::transaction::OutPoint>>,
-  channel_manager: Arc<ChannelManager>,
+  channel_manager: Arc<ChannelManager<'static, InMemoryChannelKeys>>,
   broadcaster: Arc<dyn chain::chaininterface::BroadcasterInterface>,
   payment_preimages: Arc<Mutex<HashMap<PaymentHash, PaymentPreimage>>>,
   larva: Drone,

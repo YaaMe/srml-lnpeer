@@ -3,8 +3,8 @@
 #[cfg(feature = "std")]
 use serde::Serialize;
 use codec::{Encode, Decode, Codec};
-use client::decl_runtime_apis;
-use sr_primitives::ConsensusEngineId;
+use sp_api::decl_runtime_apis;
+use sp_runtime::ConsensusEngineId;
 use rstd::vec::Vec;
 // use runtime_primitives::traits::NumberFor;
 pub const LN_ENGINE_ID: ConsensusEngineId = *b"LNID";
